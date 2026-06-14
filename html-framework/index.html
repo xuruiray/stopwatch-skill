@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StopWatch HTML Framework</title>
+  <style>
+    :root {
+      --page: #141414;
+      --panel: #202020;
+      --screen: #050505;
+      --screen-border: #3a3a3a;
+      --ink: #f4efe6;
+      --muted: #918a80;
+      --accent: #d8a35f;
+      --accent-2: #5fb7d8;
+      --danger: #d75a4a;
+      --key: #2e2e2e;
+      --key-active: #4c3a27;
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 50% 30%, #24201c, var(--page) 58%);
+      color: var(--ink);
+    }
+
+    .prototype {
+      width: min(100vw, 560px);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      justify-items: center;
+      align-items: center;
+      padding: 24px 16px 22px;
+      gap: 18px;
+    }
+
+    .device {
+      position: relative;
+      width: min(466px, calc(100vw - 32px));
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--screen);
+      box-shadow:
+        0 0 0 1px var(--screen-border),
+        0 24px 70px rgba(0, 0, 0, 0.55),
+        inset 0 0 28px rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+
+    .device-status {
+      position: absolute;
+      left: 50%;
+      bottom: 38px;
+      transform: translateX(-50%);
+      min-width: 112px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.38);
+      color: rgba(244, 239, 230, 0.92);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .controls {
+      width: min(466px, calc(100vw - 32px));
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .key {
+      height: 58px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--key);
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 800;
+      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .key:active,
+    .key.is-active {
+      background: var(--key-active);
+      transform: translateY(1px);
+    }
+
+    .debug {
+      width: min(466px, calc(100vw - 32px));
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .debug strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    @media (max-height: 640px) {
+      .prototype {
+        padding-top: 10px;
+        gap: 10px;
+      }
+
+      .controls {
+        gap: 10px;
+      }
+
+      .key {
+        height: 48px;
+      }
+
+      .debug {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="prototype">
+    <section class="device" aria-label="StopWatch circular device prototype">
+      <canvas id="screen" width="466" height="466"></canvas>
+      <div class="device-status" id="deviceStatus">IDLE</div>
+    </section>
+
+    <section>
+      <div class="controls">
+        <button class="key" id="keyLeft" type="button">A</button>
+        <button class="key" id="keyRight" type="button">B</button>
+      </div>
+      <div class="debug">
+        <span><strong>A</strong> starts or resets. <strong>B</strong> changes mode. Pointer input is mapped to device coordinates.</span>
+        <span id="debugReadout">466 x 466</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const DEVICE = {
+      size: 466,
+      center: 233,
+      radius: 233,
+      safeRadius: 218
+    };
+
+    const MODES = [
+      { name: "MODE 1", accent: "#d8a35f", spokes: 8 },
+      { name: "MODE 2", accent: "#5fb7d8", spokes: 12 },
+      { name: "MODE 3", accent: "#d75a4a", spokes: 18 }
+    ];
+
+    const STATE = {
+      idle: "idle",
+      running: "running",
+      result: "result"
+    };
+
+    const TIMING = {
+      flashMs: 120,
+      feedbackMs: 25,
+      feedbackGateMs: 80
+    };
+
+    const canvas = document.getElementById("screen");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const statusEl = document.getElementById("deviceStatus");
+    const debugReadout = document.getElementById("debugReadout");
+    const keyLeft = document.getElementById("keyLeft");
+    const keyRight = document.getElementById("keyRight");
+
+    const app = {
+      state: STATE.idle,
+      modeIndex: 0,
+      pointerDown: false,
+      pointer: { x: DEVICE.center, y: DEVICE.center, active: false },
+      startedAt: 0,
+      elapsedMs: 0,
+      flashUntil: 0,
+      flashKind: "hit",
+      lastFeedbackAt: 0,
+      audioContext: null
+    };
+
+    function resizeCanvas() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(DEVICE.size * dpr);
+      canvas.height = Math.round(DEVICE.size * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function mode() {
+      return MODES[app.modeIndex];
+    }
+
+    function setState(next) {
+      app.state = next;
+      statusEl.textContent = next.toUpperCase();
+      if (next === STATE.running) {
+        app.startedAt = performance.now();
+        app.elapsedMs = 0;
+      }
+    }
+
+    function formatTime(ms) {
+      return (Math.max(0, ms) / 1000).toFixed(2) + "s";
+    }
+
+    function pointFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = DEVICE.size / rect.width;
+      return {
+        x: (event.clientX - rect.left) * scale,
+        y: (event.clientY - rect.top) * scale
+      };
+    }
+
+    function triggerFeedback(kind) {
+      const now = performance.now();
+      if (now - app.lastFeedbackAt < TIMING.feedbackGateMs) {
+        return;
+      }
+      app.lastFeedbackAt = now;
+      app.flashKind = kind;
+      app.flashUntil = now + TIMING.flashMs;
+
+      if ("vibrate" in navigator) {
+        navigator.vibrate(kind === "miss" ? [20, 25, 20] : TIMING.feedbackMs);
+      }
+      playTone(kind);
+    }
+
+    function playTone(kind) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) {
+        return;
+      }
+      if (!app.audioContext) {
+        app.audioContext = new AudioContext();
+      }
+      const ac = app.audioContext;
+      const now = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = kind === "miss" ? "square" : "triangle";
+      osc.frequency.setValueAtTime(kind === "miss" ? 180 : 720, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(kind === "miss" ? 0.045 : 0.035, now + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === "miss" ? 0.09 : 0.045));
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+
+    function handleLeftKey() {
+      keyLeft.classList.add("is-active");
+      setTimeout(() => keyLeft.classList.remove("is-active"), 90);
+      if (app.state === STATE.running) {
+        setState(STATE.idle);
+        triggerFeedback("miss");
+        return;
+      }
+      setState(STATE.running);
+      triggerFeedback("hit");
+    }
+
+    function handleRightKey() {
+      keyRight.classList.add("is-active");
+      setTimeout(() => keyRight.classList.remove("is-active"), 90);
+      if (app.state !== STATE.idle) {
+        triggerFeedback("miss");
+        return;
+      }
+      app.modeIndex = (app.modeIndex + 1) % MODES.length;
+      triggerFeedback("hit");
+    }
+
+    function draw(now) {
+      if (app.state === STATE.running) {
+        app.elapsedMs = now - app.startedAt;
+      }
+
+      const currentMode = mode();
+      ctx.fillStyle = "#050505";
+      ctx.fillRect(0, 0, DEVICE.size, DEVICE.size);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(DEVICE.center, DEVICE.center, DEVICE.safeRadius, 0, Math.PI * 2);
+      ctx.clip();
+
+      const bg = ctx.createRadialGradient(DEVICE.center, DEVICE.center, 0, DEVICE.center, DEVICE.center, DEVICE.safeRadius);
+      bg.addColorStop(0, "#202020");
+      bg.addColorStop(1, "#090909");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, DEVICE.size, DEVICE.size);
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      for (let r = 64; r <= 192; r += 32) {
+        ctx.beginPath();
+        ctx.arc(DEVICE.center, DEVICE.center, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      const rotation = app.state === STATE.running ? app.elapsedMs * 0.00065 : app.modeIndex * 0.22;
+      ctx.strokeStyle = currentMode.accent;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.88;
+      for (let i = 0; i < currentMode.spokes; i += 1) {
+        const angle = rotation + i * Math.PI * 2 / currentMode.spokes;
+        const inner = 58;
+        const outer = 197;
+        ctx.beginPath();
+        ctx.moveTo(DEVICE.center + Math.cos(angle) * inner, DEVICE.center + Math.sin(angle) * inner);
+        ctx.lineTo(DEVICE.center + Math.cos(angle) * outer, DEVICE.center + Math.sin(angle) * outer);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      if (app.pointer.active) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.13)";
+        ctx.beginPath();
+        ctx.arc(app.pointer.x, app.pointer.y, app.pointerDown ? 26 : 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (now < app.flashUntil) {
+        ctx.fillStyle = app.flashKind === "miss" ? "rgba(215, 90, 74, 0.18)" : "rgba(216, 163, 95, 0.16)";
+        ctx.fillRect(0, 0, DEVICE.size, DEVICE.size);
+      }
+
+      ctx.restore();
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(DEVICE.center, DEVICE.center, DEVICE.safeRadius - 1, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = "#f4efe6";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "800 38px system-ui, sans-serif";
+      ctx.fillText(currentMode.name, DEVICE.center, DEVICE.center - 18);
+      ctx.font = "700 22px system-ui, sans-serif";
+      ctx.fillStyle = "rgba(244, 239, 230, 0.76)";
+      ctx.fillText(app.state === STATE.running ? formatTime(app.elapsedMs) : "READY", DEVICE.center, DEVICE.center + 28);
+
+      debugReadout.textContent = `${Math.round(app.pointer.x)}, ${Math.round(app.pointer.y)}`;
+      requestAnimationFrame(draw);
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      app.pointerDown = true;
+      app.pointer.active = true;
+      app.pointer = { ...pointFromEvent(event), active: true };
+      canvas.setPointerCapture(event.pointerId);
+      triggerFeedback("hit");
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      app.pointer = { ...pointFromEvent(event), active: true };
+    });
+
+    canvas.addEventListener("pointerup", (event) => {
+      app.pointerDown = false;
+      app.pointer = { ...pointFromEvent(event), active: true };
+      canvas.releasePointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+      app.pointerDown = false;
+      app.pointer.active = false;
+    });
+
+    keyLeft.addEventListener("click", handleLeftKey);
+    keyRight.addEventListener("click", handleRightKey);
+
+    window.addEventListener("keydown", (event) => {
+      if (event.repeat) {
+        return;
+      }
+      if (event.key === "a" || event.key === "A" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        handleLeftKey();
+      }
+      if (event.key === "d" || event.key === "D" || event.key === "ArrowRight") {
+        event.preventDefault();
+        handleRightKey();
+      }
+    });
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>

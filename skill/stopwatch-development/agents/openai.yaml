@@ -1,0 +1,4 @@
+interface:
+  display_name: "StopWatch Development"
+  short_description: "Build StopWatch app modules and HTML prototypes"
+  default_prompt: "Use $stopwatch-development to design a new StopWatch app with matching HTML and Mooncake hardware behavior."
