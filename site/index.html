@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StopWatch Skill</title>
+  <link rel="icon" type="image/png" href="assets/icon_stopwatch.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #2b2442;
+      --ink-soft: #635a74;
+      --muted: #8f879d;
+      --line: rgba(76, 63, 105, 0.12);
+      --surface: rgba(255, 255, 255, 0.74);
+      --accent: #6c55d8;
+      --warm: #d88b55;
+      --page-pad-x: clamp(14px, 2.2vw, 36px);
+      --page-pad-y: clamp(14px, 2vh, 30px);
+      --shell-pad: clamp(20px, 2.4vw, 38px);
+      --watch-size: 430px;
+      --ring-dark: 13px;
+      --ring-outer: 29px;
+      --preview-size: 372px;
+      --preview-scale: 0.7983;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 18%, rgba(218, 235, 255, 0.80), transparent 34%),
+        radial-gradient(circle at 8% 88%, rgba(255, 232, 210, 0.84), transparent 32%),
+        linear-gradient(120deg, #f3f1ff 0%, #fbfcff 46%, #fff0e2 100%);
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      width: min(100%, 1500px);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: var(--page-pad-y) var(--page-pad-x) calc(var(--page-pad-y) + 8px);
+    }
+
+    .shell {
+      min-height: calc(100svh - (var(--page-pad-y) * 2));
+      padding: var(--shell-pad);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 38px;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.22)),
+        rgba(255, 255, 255, 0.30);
+      box-shadow:
+        0 34px 90px rgba(73, 68, 110, 0.16),
+        inset 0 1px rgba(255, 255, 255, 0.84);
+      backdrop-filter: blur(24px) saturate(1.08);
+    }
+
+    .topbar {
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 28px;
+      align-items: center;
+    }
+
+    .brand {
+      display: inline-grid;
+      grid-template-columns: 38px auto;
+      gap: 12px;
+      align-items: center;
+      color: #29213f;
+      font-size: 19px;
+      font-weight: 820;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 13px;
+      display: block;
+      object-fit: cover;
+      background: transparent;
+      box-shadow: 0 12px 22px rgba(92, 79, 126, 0.10);
+      overflow: hidden;
+    }
+
+    .nav {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 30px;
+      color: #777087;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .nav a:hover {
+      color: var(--accent);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(420px, 1fr) minmax(420px, 0.86fr);
+      gap: clamp(34px, 5vw, 88px);
+      align-items: center;
+      padding: clamp(56px, 8vh, 110px) clamp(10px, 1.8vw, 26px) clamp(46px, 6vh, 78px);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      color: #2d2544;
+      font-size: clamp(62px, 6vw, 104px);
+      line-height: 0.94;
+      font-weight: 810;
+      letter-spacing: -0.018em;
+    }
+
+    .hero-text {
+      max-width: 650px;
+      margin: 24px 0 0;
+      color: var(--ink-soft);
+      font-size: 19px;
+      line-height: 1.58;
+      font-weight: 560;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .button {
+      min-height: 42px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 18px;
+      border: 1px solid rgba(108, 85, 216, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: #554869;
+      font-size: 13px;
+      font-weight: 780;
+      white-space: nowrap;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    .button.primary {
+      border: 0;
+      color: #fff;
+      background: linear-gradient(145deg, #8065dc, #d988a2);
+      box-shadow: 0 18px 34px rgba(120, 85, 184, 0.24);
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      background: #fff;
+      box-shadow: 0 16px 28px rgba(84, 72, 121, 0.12);
+    }
+
+    .showcase {
+      min-width: 0;
+      display: grid;
+      justify-items: center;
+      gap: 18px;
+    }
+
+    .watch-case {
+      position: relative;
+      width: var(--watch-size);
+      height: var(--watch-size);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      filter: drop-shadow(0 34px 62px rgba(47, 43, 63, 0.24));
+    }
+
+    .case-button {
+      position: absolute;
+      z-index: 1;
+      border-radius: 999px;
+      box-shadow:
+        inset 0 2px 4px rgba(255, 255, 255, 0.30),
+        inset 0 -2px 5px rgba(24, 18, 18, 0.22),
+        0 10px 18px rgba(54, 43, 58, 0.18);
+    }
+
+    .case-button--yellow {
+      left: 4.5%;
+      top: 6.8%;
+      width: 24%;
+      height: 8.5%;
+      background: linear-gradient(145deg, #e2b650, #bf8931);
+      transform: rotate(-42deg);
+    }
+
+    .case-button--blue {
+      right: 5.2%;
+      top: 7.2%;
+      width: 21%;
+      height: 8%;
+      background: linear-gradient(145deg, #527fd6, #2e5ead);
+      transform: rotate(40deg);
+    }
+
+    .case-button--red {
+      left: 7.8%;
+      bottom: 15%;
+      width: 16%;
+      height: 6.5%;
+      background: linear-gradient(145deg, #d36d63, #a94c46);
+      transform: rotate(43deg);
+    }
+
+    .device-preview {
+      position: relative;
+      z-index: 2;
+      width: var(--preview-size);
+      height: var(--preview-size);
+      display: block;
+      overflow: hidden;
+      border-radius: 50%;
+      background: #050505;
+      box-shadow:
+        0 0 0 var(--ring-dark) #060505,
+        0 0 0 var(--ring-outer) #2b2525,
+        0 0 0 calc(var(--ring-outer) + 2px) rgba(255, 255, 255, 0.16),
+        inset 0 0 42px rgba(0, 0, 0, 0.86),
+        0 22px 36px rgba(44, 39, 52, 0.18);
+    }
+
+    .device-preview::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.20) 100%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 30%, rgba(0, 0, 0, 0.14));
+      pointer-events: none;
+    }
+
+    .device-preview iframe {
+      display: block;
+      width: 466px;
+      height: 466px;
+      border: 0;
+      transform: scale(var(--preview-scale));
+      transform-origin: 0 0;
+      background: #000;
+    }
+
+    .preview-label {
+      color: #736a82;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+      gap: clamp(18px, 2vw, 28px);
+      padding: 0 clamp(0px, 1vw, 14px);
+    }
+
+    .panel {
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      border-radius: 28px;
+      background: var(--surface);
+      box-shadow:
+        0 22px 56px rgba(84, 72, 121, 0.12),
+        inset 0 1px rgba(255, 255, 255, 0.84);
+    }
+
+    .panel-inner {
+      padding: 26px;
+    }
+
+    .panel-title {
+      margin: 0;
+      color: #302747;
+      font-size: 22px;
+      line-height: 1.16;
+      font-weight: 820;
+    }
+
+    .panel-copy {
+      margin: 12px 0 0;
+      color: #746a83;
+      font-size: 14px;
+      line-height: 1.65;
+      font-weight: 560;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid rgba(94, 82, 120, 0.08);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.55);
+    }
+
+    .step-number {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 15px;
+      color: #fff;
+      background: linear-gradient(145deg, #8065dc, #d988a2);
+      font-size: 14px;
+      font-weight: 820;
+    }
+
+    .step-title {
+      color: #342a50;
+      font-size: 15px;
+      font-weight: 820;
+    }
+
+    .step-copy {
+      margin-top: 5px;
+      color: #746a83;
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 560;
+    }
+
+    .map {
+      display: grid;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .map-row {
+      display: grid;
+      grid-template-columns: 152px minmax(0, 1fr);
+      gap: 14px;
+      padding: 13px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.52);
+      color: #766d83;
+      font-size: 13px;
+      line-height: 1.42;
+      font-weight: 560;
+    }
+
+    .map-row code {
+      color: #352a55;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin: clamp(18px, 2vh, 26px) clamp(0px, 1vw, 14px) 0;
+    }
+
+    .note {
+      min-height: 104px;
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.48);
+      color: #7f768a;
+      font-size: 12px;
+      line-height: 1.48;
+      font-weight: 620;
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #554b69;
+      font-size: 13px;
+      font-weight: 820;
+    }
+
+    @media (min-width: 1440px) {
+      :root {
+        --watch-size: 470px;
+        --ring-dark: 14px;
+        --ring-outer: 31px;
+        --preview-size: 408px;
+        --preview-scale: 0.8755;
+      }
+
+      .page {
+        width: min(100%, 1680px);
+      }
+    }
+
+    @media (max-width: 980px) {
+      :root {
+        --watch-size: 334px;
+        --ring-dark: 10px;
+        --ring-outer: 20px;
+        --preview-size: 294px;
+        --preview-scale: 0.6309;
+      }
+
+      .hero,
+      .content-grid,
+      .notes {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        padding-top: 54px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      :root {
+        --watch-size: 310px;
+        --ring-dark: 10px;
+        --ring-outer: 20px;
+        --preview-size: 270px;
+        --preview-scale: 0.5794;
+      }
+
+      .page {
+        padding: 18px 12px;
+      }
+
+      .shell {
+        padding: 20px;
+        border-radius: 28px;
+      }
+
+      .nav {
+        gap: 18px;
+      }
+
+      h1 {
+        font-size: 50px;
+      }
+
+      .hero {
+        gap: 34px;
+        padding: 40px 0 34px;
+      }
+
+      .content-grid {
+        padding: 0;
+      }
+
+      .map-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 420px) {
+      :root {
+        --watch-size: 270px;
+        --ring-dark: 8px;
+        --ring-outer: 13px;
+        --preview-size: 244px;
+        --preview-scale: 0.5236;
+      }
+
+      .brand {
+        grid-template-columns: 34px auto;
+        gap: 10px;
+        font-size: 17px;
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+      }
+
+      .nav {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="shell">
+      <nav class="topbar" aria-label="StopWatch skill navigation">
+        <a class="brand" data-local-href="../../StopWatch/site/index.html" data-file-href="../index.html" data-page-href="../" href="../" aria-label="Back to StopWatch hub">
+          <img class="brand-mark" src="assets/icon_stopwatch.png" alt="">
+          <span>StopWatch Skill</span>
+        </a>
+        <div class="nav">
+          <a data-local-href="../html-framework/index.html" data-file-href="framework/index.html" data-page-href="framework/" href="framework/">Prototype</a>
+          <a href="https://github.com/xuruiray/stopwatch-skill">GitHub</a>
+        </div>
+      </nav>
+
+      <section class="hero" id="top">
+        <div>
+          <h1>Design the browser version first. Ship the hardware version cleanly.</h1>
+          <p class="hero-text">
+            A reusable Codex workflow and vanilla HTML framework for StopWatch apps. It keeps the round-screen prototype, hardware button model, feedback timing, and Mooncake/LVGL migration path in one repeatable loop.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" data-local-href="../html-framework/index.html" data-file-href="framework/index.html" data-page-href="framework/" href="framework/">Open Prototype</a>
+            <a class="button" href="https://github.com/xuruiray/stopwatch-skill/blob/main/skill/stopwatch-development/SKILL.md">Read SKILL.md</a>
+            <a class="button" href="https://github.com/xuruiray/stopwatch-skill">GitHub Repo</a>
+          </div>
+        </div>
+
+        <div class="showcase" aria-label="StopWatch framework preview">
+          <div class="watch-case">
+            <span class="case-button case-button--yellow" aria-hidden="true"></span>
+            <span class="case-button case-button--blue" aria-hidden="true"></span>
+            <span class="case-button case-button--red" aria-hidden="true"></span>
+            <div class="device-preview" aria-label="StopWatch HTML framework preview">
+              <iframe id="frameworkPreview" title="StopWatch HTML framework preview" src="framework/index.html?embed=1" loading="lazy"></iframe>
+            </div>
+          </div>
+          <div class="preview-label">Interactive 466 x 466 prototype surface</div>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <section class="panel">
+          <div class="panel-inner">
+            <h2 class="panel-title">Prototype-to-firmware flow</h2>
+            <p class="panel-copy">
+              The workflow mirrors how StopWatch apps are actually built: browser iteration first, then a focused hardware port, then host firmware integration through app submodules.
+            </p>
+            <div class="flow">
+              <div class="flow-step">
+                <div class="step-number">01</div>
+                <div>
+                  <div class="step-title">Prototype UI and interaction</div>
+                  <div class="step-copy">Start from the HTML framework, tune the round-screen layout, buttons, pointer input, timing, audio, and vibration behavior in a browser.</div>
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="step-number">02</div>
+                <div>
+                  <div class="step-title">Mirror confirmed behavior</div>
+                  <div class="step-copy">Keep constants, state machines, result formats, and feedback gates aligned so the browser prototype remains the source of truth.</div>
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="step-number">03</div>
+                <div>
+                  <div class="step-title">Migrate into Mooncake/LVGL</div>
+                  <div class="step-copy">Extract the app repository, wire assets and lifecycle hooks, build with ESP-IDF, then flash and inspect device logs.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-inner">
+            <h2 class="panel-title">Skill package map</h2>
+            <p class="panel-copy">
+              Inspired by agent skill pages that explain the directory contract first: a skill is not only prompt text, it also carries reusable references, scripts, and assets.
+            </p>
+            <div class="map">
+              <div class="map-row">
+                <code>SKILL.md</code>
+                <span>Workflow rules for StopWatch app design, Mooncake migration, validation, and repository handoff.</span>
+              </div>
+              <div class="map-row">
+                <code>html-framework/</code>
+                <span>Standalone 466x466 browser prototype starter with keys, pointer input, feedback helpers, and embedded preview mode.</span>
+              </div>
+              <div class="map-row">
+                <code>assets/html-framework/</code>
+                <span>The same framework bundled inside the skill so future app repos can be created from the approved template.</span>
+              </div>
+              <div class="map-row">
+                <code>thirdparty/&lt;App&gt;</code>
+                <span>Host firmware integration pattern: each app lives in its own repository and is consumed as a submodule.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="notes" aria-label="StopWatch skill highlights">
+        <div class="note"><strong>Browser-first</strong>Fast visual iteration in plain HTML, no build step, and `file://` friendly previews.</div>
+        <div class="note"><strong>Hardware-aware</strong>The template uses the same circular display size, A/B button model, and feedback timing concepts as the device.</div>
+        <div class="note"><strong>Evidence-driven</strong>The skill asks Codex to inspect repo state, build firmware, flash when requested, and avoid judging hardware behavior without logs.</div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const isFilePreview = window.location.protocol === "file:";
+    const isSourcePreview = isFilePreview && window.location.pathname.endsWith("/site/index.html");
+
+    document.querySelectorAll("[data-local-href][data-file-href][data-page-href]").forEach((link) => {
+      if (isSourcePreview) {
+        link.href = link.dataset.localHref;
+        return;
+      }
+      link.href = isFilePreview ? link.dataset.fileHref : link.dataset.pageHref;
+    });
+
+    document.getElementById("frameworkPreview").src = isSourcePreview
+      ? "../html-framework/index.html?embed=1"
+      : "framework/index.html?embed=1";
+  </script>
+</body>
+</html>
